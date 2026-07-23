@@ -43,7 +43,7 @@ fn main() {
         }
     });
 
-    let mut maps: Vec<HashMap<&str, Stats>> = Vec::new();
+    let mut maps: Vec<HashMap<&[u8], Stats>> = Vec::new();
     for _ in 0..logical_cores {
         maps.push(HashMap::new());
     }
@@ -70,7 +70,8 @@ fn main() {
                         ind_line += 1;
                     }
 
-                    let station_name = std::str::from_utf8(&line[..ind_line]).unwrap();
+                    //takes some time
+                    let station_name = &line[..ind_line];
                     ind_line += 1; //skips past the ;
 
                     let mut negative = false;
@@ -111,7 +112,7 @@ fn main() {
         }
     });
 
-    let mut final_map: HashMap<&str, Stats> = HashMap::new();
+    let mut final_map: HashMap<&[u8], Stats> = HashMap::new();
 
     for map in maps {
         for (key, value) in map {
@@ -127,12 +128,12 @@ fn main() {
         }
     }
 
-    let sorted: BTreeMap<&str, Stats> = final_map.into_iter().collect();
+    let sorted: BTreeMap<&[u8], Stats> = final_map.into_iter().collect();
 
     for (name, stats) in &sorted {
         println!(
             "{}={:.1}/{:.1}/{:.1}",
-            name,
+            std::str::from_utf8(name).unwrap(),
             stats.min as f64 / 10.0,
             (stats.sum as f64 / stats.count as f64) / 10.0,
             stats.max as f64 / 10.0

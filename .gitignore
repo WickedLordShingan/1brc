@@ -1,3 +1,5 @@
 /jarget
 /dont_open/measurements.txt
 /target/*
+perf.data
+perf.data.old
