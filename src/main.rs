@@ -1,7 +1,8 @@
 #![allow(unused)]
 
 use memmap2::Mmap;
-use std::collections::{BTreeMap, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::thread;
 
@@ -43,9 +44,9 @@ fn main() {
         }
     });
 
-    let mut maps: Vec<HashMap<&[u8], Stats>> = Vec::new();
+    let mut maps: Vec<FxHashMap<&[u8], Stats>> = Vec::new();
     for _ in 0..logical_cores {
-        maps.push(HashMap::new());
+        maps.push(FxHashMap::default());
     }
 
     thread::scope(|s| {
@@ -112,7 +113,7 @@ fn main() {
         }
     });
 
-    let mut final_map: HashMap<&[u8], Stats> = HashMap::new();
+    let mut final_map: FxHashMap<&[u8], Stats> = FxHashMap::default();
 
     for map in maps {
         for (key, value) in map {
