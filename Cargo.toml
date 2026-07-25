@@ -9,3 +9,4 @@ rustc-hash = "2.1.3"
 
 [profile.release]
 debug = true
+lto = true
