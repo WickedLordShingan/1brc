@@ -1,11 +1,13 @@
 #![allow(unused)]
 
+//TODO: remove name check (bytewise compare)
+
 use memmap2::Mmap;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::thread;
 
-const TABLE_SIZE: usize = 1 << 12; // 4,096 slots — ~10% load factor for ~413 stations
+const TABLE_SIZE: usize = 1 << 12;
 const TABLE_MASK: usize = TABLE_SIZE - 1;
 
 #[derive(Default, Clone, Copy)]
@@ -32,10 +34,10 @@ impl<'a> Stats<'a> {
 }
 
 fn hash(name: &[u8]) -> u16 {
-    let mut h: u32 = 0x811c9dc5; // FNV offset basis
+    let mut h: u32 = 0x811c9dc5;
     for &b in name {
         h ^= b as u32;
-        h = h.wrapping_mul(0x01000193); // FNV prime
+        h = h.wrapping_mul(0x01000193);
     }
     (h ^ (h >> 16)) as u16
 }
@@ -123,45 +125,51 @@ fn main() {
             let data = &mapped_file[start..end];
             s.spawn(move || {
                 let mut ind = 0;
-                while ind < data.len() {
-                    let line_start = ind;
-                    while data[ind] != b'\n' {
-                        ind += 1;
-                    }
-                    let line = &data[line_start..ind + 1];
-                    ind += 1;
+                let length = data.len();
+                let mut last_new_line = 0;
+                let mut ind = 0;
 
-                    // parsing the line
-                    let mut ind_line: usize = 0;
-                    while line[ind_line] != b';' {
-                        ind_line += 1;
-                    }
-
-                    let station_name = &line[..ind_line];
-                    ind_line += 1; // skip past the ;
-
-                    let mut negative = false;
-                    if line[ind_line] == b'-' {
-                        ind_line += 1;
-                        negative = true;
-                    }
-
-                    let mut num = 0;
-                    while line[ind_line] != b'\n' {
-                        if line[ind_line] == b'.' {
-                            ind_line += 1;
+                while last_new_line < data.len() {
+                    // find ';' starting from ind
+                    let semi = if ind + 8 <= data.len() {
+                        let svar_reg = u64::from_le_bytes(data[ind..ind + 8].try_into().unwrap());
+                        let t = svar_reg ^ 0x3B3B_3B3B_3B3B_3B3B; // 0x3B = ';'
+                        let m = t.wrapping_sub(0x0101_0101_0101_0101) & !t & 0x8080_8080_8080_8080;
+                        if m == 0 {
+                            ind += 8;
                             continue;
                         }
-                        let digit = (line[ind_line] - b'0') as i16;
-                        num = num * 10 + digit;
-                        ind_line += 1;
+                        ind + (m.trailing_zeros() / 8) as usize //trailing zeros because little
+                    //endian
+                    } else {
+                        let mut s = ind;
+                        while data[s] != b';' {
+                            s += 1;
+                        }
+                        s
+                    };
+
+                    let station_name = &data[last_new_line..semi];
+
+                    let mut pos = semi + 1;
+                    let mut neg: i16 = 1;
+                    if data[pos] == b'-' {
+                        neg = -1;
+                        pos += 1;
                     }
 
-                    if negative {
-                        num *= -1;
+                    let mut num: i16 = 0;
+                    while data[pos] != b'\n' {
+                        if data[pos] != b'.' {
+                            num = num * 10 + (data[pos] - b'0') as i16;
+                        }
+                        pos += 1;
                     }
 
-                    insert_reading(map, station_name, num);
+                    insert_reading(map, station_name, num * neg);
+
+                    last_new_line = pos + 1;
+                    ind = last_new_line;
                 }
             });
         }
