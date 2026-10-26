@@ -1,30 +1,41 @@
 #![allow(unused)]
 
 //TODO: remove name check (bytewise compare)
-
 use memmap2::Mmap;
+use std::cmp::min_by_key;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::thread;
 
-const TABLE_SIZE: usize = 1 << 12;
+const TABLE_SIZE: usize = 1 << 11;
 const TABLE_MASK: usize = TABLE_SIZE - 1;
 
 #[derive(Default, Clone, Copy)]
 struct Stats<'a> {
+    first_8: u64,
+    len: u8,
     name: &'a [u8],
-    hash: u16,
     min: i16,
     max: i16,
     count: u32,
     sum: i64,
 }
 
+// #[inline(always)]
+fn str_to_u64_le(name: &'_ [u8]) -> u64 {
+    let mut buf = [0u8; 8];
+    let bytes = name;
+    let len = bytes.len().min(8);
+    buf[..len].copy_from_slice(&bytes[..len]);
+    u64::from_le_bytes(buf)
+}
+
 impl<'a> Stats<'a> {
-    fn from(name: &'a [u8], hash: u16) -> Self {
+    fn from(name: &'a [u8]) -> Self {
         Stats {
             name,
-            hash,
+            first_8: str_to_u64_le(name),
+            len: name.len() as u8,
             min: i16::MAX,
             max: i16::MIN,
             count: 0,
@@ -33,6 +44,7 @@ impl<'a> Stats<'a> {
     }
 }
 
+// #[inline(never)]
 fn hash(name: &[u8]) -> u16 {
     let mut h: u32 = 0x811c9dc5;
     for &b in name {
@@ -41,6 +53,14 @@ fn hash(name: &[u8]) -> u16 {
     }
     (h ^ (h >> 16)) as u16
 }
+
+// #[inline(never)]
+// fn check(e: &Stats<'_>, name: &'_ [u8]) -> (bool, bool) {
+//     (
+//         e.name.is_empty(),
+//         e.first_8 == str_to_u64_le(name) && e.name == name,
+//     )
+// }
 
 fn lookup_or_insert<'a>(
     table: &mut [Stats<'a>],
@@ -56,11 +76,17 @@ fn lookup_or_insert<'a>(
     loop {
         let (is_empty, is_match) = {
             let e = &table[idx];
-            (e.name.is_empty(), e.hash == hash && e.name == name)
+            (
+                e.name.is_empty(),
+                e.len as usize == name.len()
+                    && e.first_8 == str_to_u64_le(name)
+                    && (e.len <= 8 || e.name == name),
+            )
         };
 
         if is_empty {
-            table[idx] = Stats::from(name, hash);
+            //HERE - insertion
+            table[idx] = Stats::from(name);
             break;
         }
         if is_match {
@@ -76,13 +102,14 @@ fn lookup_or_insert<'a>(
     entry.count += count;
 }
 
-#[inline]
+// #[inline(never)]
 fn insert_reading<'a>(table: &mut [Stats<'a>], name: &'a [u8], value: i16) {
+    //HERE:
     lookup_or_insert(table, name, value, value, value as i64, 1);
 }
 
 fn main() {
-    let file_name = "./dont_open/measurements.txt";
+    let file_name = "./create_file/measurements.txt";
     let file = File::open(file_name).unwrap();
     let mapped_file = unsafe { Mmap::map(&file).unwrap() };
     let size = fs::metadata(file_name).unwrap().len();
@@ -166,6 +193,7 @@ fn main() {
                         pos += 1;
                     }
 
+                    //HERE - I am just inserting
                     insert_reading(map, station_name, num * neg);
 
                     last_new_line = pos + 1;

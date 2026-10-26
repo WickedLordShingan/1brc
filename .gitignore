@@ -1,4 +1,5 @@
 /dont_open/measurements.txt
+/create_file/measurements.txt
 /target/*
 perf.data
 perf.data.old
